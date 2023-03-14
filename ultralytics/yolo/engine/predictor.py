@@ -32,7 +32,6 @@ from collections import defaultdict
 from pathlib import Path
 
 import cv2
-import torch
 
 from ultralytics.nn.autobackend import AutoBackend
 from ultralytics.yolo.cfg import get_cfg
@@ -178,7 +177,14 @@ class BasePredictor:
             self.run_callbacks('on_predict_postprocess_end')
 
             # visualize, save, write results
-            for i in range(len(im)):
+            n = len(im)
+            for i in range(n):
+                self.results[i].speed = {
+                    'preprocess': self.dt[0].dt * 1E3 / n,
+                    'inference': self.dt[1].dt * 1E3 / n,
+                    'postprocess': self.dt[2].dt * 1E3 / n}
+                if self.source_type.tensor:  # skip write, show and plot operations if input is raw tensor
+                    continue
                 p, im0 = (path[i], im0s[i].copy()) if self.source_type.webcam or self.source_type.from_img \
                     else (path, im0s.copy())
                 p = Path(p)
@@ -214,11 +220,16 @@ class BasePredictor:
 
         self.run_callbacks('on_predict_end')
 
-    def setup_model(self, model):
-        device = select_device(self.args.device)
+    def setup_model(self, model, verbose=True):
+        device = select_device(self.args.device, verbose=verbose)
         model = model or self.args.model
         self.args.half &= device.type != 'cpu'  # half precision only supported on CUDA
-        self.model = AutoBackend(model, device=device, dnn=self.args.dnn, data=self.args.data, fp16=self.args.half)
+        self.model = AutoBackend(model,
+                                 device=device,
+                                 dnn=self.args.dnn,
+                                 data=self.args.data,
+                                 fp16=self.args.half,
+                                 verbose=verbose)
         self.device = device
         self.model.eval()
 

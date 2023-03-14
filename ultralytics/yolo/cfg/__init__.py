@@ -13,7 +13,7 @@ from ultralytics.yolo.utils import (DEFAULT_CFG, DEFAULT_CFG_DICT, DEFAULT_CFG_P
 
 CLI_HELP_MSG = \
     f"""
-    Arguments received: {str(['yolo'] + sys.argv[1:])}. Note that Ultralytics 'yolo' commands use the following syntax:
+    Arguments received: {str(['yolo'] + sys.argv[1:])}. Ultralytics 'yolo' commands use the following syntax:
 
         yolo TASK MODE ARGS
 
@@ -61,8 +61,10 @@ CFG_BOOL_KEYS = ('save', 'exist_ok', 'pretrained', 'verbose', 'deterministic', '
                  'v5loader')
 
 # Define valid tasks and modes
-TASKS = 'detect', 'segment', 'classify'
 MODES = 'train', 'val', 'predict', 'export', 'track', 'benchmark'
+TASKS = 'detect', 'segment', 'classify'
+TASK2DATA = {'detect': 'coco128.yaml', 'segment': 'coco128-seg.yaml', 'classify': 'imagenet100'}
+TASK2MODEL = {'detect': 'yolov8n.pt', 'segment': 'yolov8n-seg.pt', 'classify': 'yolov8n-cls.pt'}
 
 
 def cfg2dict(cfg):
@@ -217,6 +219,9 @@ def entrypoint(debug=''):
         if a.startswith('--'):
             LOGGER.warning(f"WARNING ⚠️ '{a}' does not require leading dashes '--', updating to '{a[2:]}'.")
             a = a[2:]
+        if a.endswith(','):
+            LOGGER.warning(f"WARNING ⚠️ '{a}' does not require trailing comma ',', updating to '{a[:-1]}'.")
+            a = a[:-1]
         if '=' in a:
             try:
                 re.sub(r' *= *', '=', a)  # remove spaces around equals sign
@@ -254,8 +259,8 @@ def entrypoint(debug=''):
         else:
             check_cfg_mismatch(full_args_dict, {a: ''})
 
-    # Defaults
-    task2data = dict(detect='coco128.yaml', segment='coco128-seg.yaml', classify='imagenet100')
+    # Check keys
+    check_cfg_mismatch(full_args_dict, overrides)
 
     # Mode
     mode = overrides.get('mode', None)
@@ -269,6 +274,14 @@ def entrypoint(debug=''):
         checks.check_yolo()
         return
 
+    # Task
+    task = overrides.pop('task', None)
+    if task:
+        if task not in TASKS:
+            raise ValueError(f"Invalid 'task={task}'. Valid tasks are {TASKS}.\n{CLI_HELP_MSG}")
+        if 'model' not in overrides:
+            overrides['model'] = TASK2MODEL[task]
+
     # Model
     model = overrides.pop('model', DEFAULT_CFG.model)
     if model is None:
@@ -276,24 +289,24 @@ def entrypoint(debug=''):
         LOGGER.warning(f"WARNING ⚠️ 'model' is missing. Using default 'model={model}'.")
     from ultralytics.yolo.engine.model import YOLO
     overrides['model'] = model
-    model = YOLO(model)
+    model = YOLO(model, task=task)
 
-    # Task
-    task = overrides.get('task', None)
-    if task is not None and task not in TASKS:
-        raise ValueError(f"Invalid 'task={task}'. Valid tasks are {TASKS}.\n{CLI_HELP_MSG}")
-    else:
-        model.task = task
+    # Task Update
+    if task != model.task:
+        if task:
+            LOGGER.warning(f"WARNING ⚠️ conflicting 'task={task}' passed with 'task={model.task}' model. "
+                           f"Ignoring 'task={task}' and updating to 'task={model.task}' to match model.")
+        task = model.task
 
     # Mode
-    if mode in {'predict', 'track'} and 'source' not in overrides:
+    if mode in ('predict', 'track') and 'source' not in overrides:
         overrides['source'] = DEFAULT_CFG.source or ROOT / 'assets' if (ROOT / 'assets').exists() \
             else 'https://ultralytics.com/images/bus.jpg'
         LOGGER.warning(f"WARNING ⚠️ 'source' is missing. Using default 'source={overrides['source']}'.")
     elif mode in ('train', 'val'):
         if 'data' not in overrides:
-            overrides['data'] = task2data.get(overrides['task'], DEFAULT_CFG.data)
-            LOGGER.warning(f"WARNING ⚠️ 'data' is missing. Using {model.task} default 'data={overrides['data']}'.")
+            overrides['data'] = TASK2DATA.get(task or DEFAULT_CFG.task, DEFAULT_CFG.data)
+            LOGGER.warning(f"WARNING ⚠️ 'data' is missing. Using default 'data={overrides['data']}'.")
     elif mode == 'export':
         if 'format' not in overrides:
             overrides['format'] = DEFAULT_CFG.format or 'torchscript'

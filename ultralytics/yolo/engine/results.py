@@ -2,9 +2,10 @@
 """
 Ultralytics Results, Boxes and Masks classes for handling inference results
 
-Usage: See https://docs.ultralytics.com/predict/
+Usage: See https://docs.ultralytics.com/modes/predict/
 """
 
+import pprint
 from copy import deepcopy
 from functools import lru_cache
 
@@ -47,7 +48,7 @@ class Results:
         self.probs = probs if probs is not None else None
         self.names = names
         self.path = path
-        self._keys = (k for k in ('boxes', 'masks', 'probs') if getattr(self, k) is not None)
+        self._keys = [k for k in ('boxes', 'masks', 'probs') if getattr(self, k) is not None]
 
     def pandas(self):
         pass
@@ -96,10 +97,11 @@ class Results:
             return len(getattr(self, k))
 
     def __str__(self):
-        return ''.join(getattr(self, k).__str__() for k in self._keys)
+        attr = {k: v for k, v in vars(self).items() if not isinstance(v, type(self))}
+        return pprint.pformat(attr, indent=2, width=120, depth=10, compact=True)
 
     def __repr__(self):
-        return ''.join(getattr(self, k).__repr__() for k in self._keys)
+        return self.__str__()
 
     def __getattr__(self, attr):
         name = self.__class__.__name__
@@ -120,8 +122,7 @@ class Results:
         Returns:
             (None) or (PIL.Image): If `pil` is True, a PIL Image is returned. Otherwise, nothing is returned.
         """
-        img = deepcopy(self.orig_img)
-        annotator = Annotator(img, line_width, font_size, font, pil, example)
+        annotator = Annotator(deepcopy(self.orig_img), line_width, font_size, font, pil, example)
         boxes = self.boxes
         masks = self.masks
         logits = self.probs
@@ -134,16 +135,17 @@ class Results:
                 annotator.box_label(d.xyxy.squeeze(), label, color=colors(c, True))
 
         if masks is not None:
-            im = torch.as_tensor(img, dtype=torch.float16, device=masks.data.device).permute(2, 0, 1).flip(0)
+            im = torch.as_tensor(annotator.im, dtype=torch.float16, device=masks.data.device).permute(2, 0, 1).flip(0)
             im = F.resize(im.contiguous(), masks.data.shape[1:]) / 255
             annotator.masks(masks.data, colors=[colors(x, True) for x in boxes.cls], im_gpu=im)
 
         if logits is not None:
-            top5i = logits.argsort(0, descending=True)[:5].tolist()  # top 5 indices
+            n5 = min(len(self.names), 5)
+            top5i = logits.argsort(0, descending=True)[:n5].tolist()  # top 5 indices
             text = f"{', '.join(f'{names[j] if names else j} {logits[j]:.2f}' for j in top5i)}, "
             annotator.text((32, 32), text, txt_color=(255, 255, 255))  # TODO: allow setting colors
 
-        return img
+        return np.asarray(annotator.im) if annotator.pil else annotator.im
 
 
 class Boxes:
@@ -183,7 +185,7 @@ class Boxes:
         if boxes.ndim == 1:
             boxes = boxes[None, :]
         n = boxes.shape[-1]
-        assert n in {6, 7}, f'expected `n` in [6, 7], but got {n}'  # xyxy, (track_id), conf, cls
+        assert n in (6, 7), f'expected `n` in [6, 7], but got {n}'  # xyxy, (track_id), conf, cls
         # TODO
         self.is_track = n == 7
         self.boxes = boxes
@@ -260,8 +262,11 @@ class Boxes:
         return self.boxes.__str__()
 
     def __repr__(self):
-        return (f'Ultralytics YOLO {self.__class__} masks\n' + f'type: {type(self.boxes)}\n' +
-                f'shape: {self.boxes.shape}\n' + f'dtype: {self.boxes.dtype}\n + {self.boxes.__repr__()}')
+        return (f'{self.__class__.__module__}.{self.__class__.__name__}\n'
+                f'type:  {self.boxes.__class__.__module__}.{self.boxes.__class__.__name__}\n'
+                f'shape: {self.boxes.shape}\n'
+                f'dtype: {self.boxes.dtype}\n'
+                f'{self.boxes.__repr__()}')
 
     def __getitem__(self, idx):
         return Boxes(self.boxes[idx], self.orig_shape)
@@ -336,8 +341,11 @@ class Masks:
         return self.masks.__str__()
 
     def __repr__(self):
-        return (f'Ultralytics YOLO {self.__class__} masks\n' + f'type: {type(self.masks)}\n' +
-                f'shape: {self.masks.shape}\n' + f'dtype: {self.masks.dtype}\n + {self.masks.__repr__()}')
+        return (f'{self.__class__.__module__}.{self.__class__.__name__}\n'
+                f'type:  {self.masks.__class__.__module__}.{self.masks.__class__.__name__}\n'
+                f'shape: {self.masks.shape}\n'
+                f'dtype: {self.masks.dtype}\n'
+                f'{self.masks.__repr__()}')
 
     def __getitem__(self, idx):
         return Masks(self.masks[idx], self.orig_shape)
