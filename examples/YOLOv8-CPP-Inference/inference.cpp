@@ -8,7 +8,7 @@ Inference::Inference(const std::string &onnxModelPath, const cv::Size &modelInpu
     cudaEnabled = runWithCuda;
 
     loadOnnxNetwork();
-    // loadClassesFromFile(); The classes are hard-coded for this example
+    loadClassesFromFile(); // The classes are hard-coded for this example
 }
 
 std::vector<Detection> Inference::runInference(const cv::Mat &input)
@@ -147,6 +147,7 @@ std::vector<Detection> Inference::runInference(const cv::Mat &input)
 
 void Inference::loadClassesFromFile()
 {
+    classes.clear();
     std::ifstream inputFile(classesPath);
     if (inputFile.is_open())
     {

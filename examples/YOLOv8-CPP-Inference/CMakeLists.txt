@@ -4,6 +4,9 @@ project(Yolov8CPPInference VERSION 0.1)
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
+# C++
+set(CMAKE_CXX_STANDARD 17)
+
 # CUDA
 set(CUDA_TOOLKIT_ROOT_DIR "/usr/local/cuda")
 find_package(CUDA 11 REQUIRED)

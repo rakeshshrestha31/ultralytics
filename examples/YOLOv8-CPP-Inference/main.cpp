@@ -1,6 +1,7 @@
 #include <iostream>
 #include <vector>
 #include <getopt.h>
+#include <filesystem>
 
 #include <opencv2/opencv.hpp>
 
@@ -11,7 +12,18 @@ using namespace cv;
 
 int main(int argc, char **argv)
 {
-    std::string projectBasePath = "/home/user/ultralytics"; // Set your ultralytics base path
+    // std::string projectBasePath = "/home/paperspace/raddev/ultralytics"; // Set your ultralytics base path
+
+    if (argc < 6)
+    {
+        std::cout << "Usage: " << argv[0] << " " << "<model> <classes> <image_dir> <width> <height>" << std::endl;
+        exit(1);
+    }
+    std::string modelFile = std::string(argv[1]);
+    std::string classesFile = std::string(argv[2]);
+    std::string imageDir = std::string(argv[3]);
+    int width = std::stoi(argv[4]);
+    int height = std::stoi(argv[5]);
 
     bool runOnGPU = true;
 
@@ -24,15 +36,31 @@ int main(int argc, char **argv)
     //
 
     // Note that in this example the classes are hard-coded and 'classes.txt' is a place holder.
-    Inference inf(projectBasePath + "/yolov8s.onnx", cv::Size(640, 480), "classes.txt", runOnGPU);
+    Inference inf(
+        modelFile, // projectBasePath + "/yolov8s.onnx",
+        cv::Size(width, height),
+        classesFile, // "classes.txt",
+        runOnGPU
+    );
 
-    std::vector<std::string> imageNames;
-    imageNames.push_back(projectBasePath + "/ultralytics/assets/bus.jpg");
-    imageNames.push_back(projectBasePath + "/ultralytics/assets/zidane.jpg");
+    // std::vector<std::string> imageNames;
+    // imageNames.push_back(projectBasePath + "/ultralytics/assets/bus.jpg");
+    // imageNames.push_back(projectBasePath + "/ultralytics/assets/zidane.jpg");
 
-    for (int i = 0; i < imageNames.size(); ++i)
+    std::filesystem::path imageDirPath(imageDir);
+
+    for (const auto& entry : std::filesystem::directory_iterator(imageDirPath))
+    // for (int i = 0; i < imageNames.size(); ++i)
     {
-        cv::Mat frame = cv::imread(imageNames[i]);
+        if (!entry.is_regular_file())
+        {
+            continue;
+        }
+
+        auto imageName = entry.path();
+        // auto imageName = imageNames[i]
+
+        cv::Mat frame = cv::imread(imageName);
 
         // Inference starts here...
         std::vector<Detection> output = inf.runInference(frame);
@@ -63,8 +91,12 @@ int main(int argc, char **argv)
         // This is only for preview purposes
         float scale = 0.8;
         cv::resize(frame, frame, cv::Size(frame.cols*scale, frame.rows*scale));
-        cv::imshow("Inference", frame);
+        // cv::imshow("Inference", frame);
 
-        cv::waitKey(-1);
+        // cv::waitKey(-1);
+
+        auto outfile = std::string("/tmp/") + std::string(entry.path().stem()) + ".jpg";
+        std::cout << outfile << std::endl;
+        cv::imwrite(outfile, frame);
     }
 }
